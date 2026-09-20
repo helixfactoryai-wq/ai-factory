@@ -19,18 +19,17 @@ const TABLE = "templates";
 export const templatesService = {
   async getAll(): Promise<Template[]> {
     const { data, error } = await supabase
-      .from(TABLE).select("*").order("is_featured", { ascending: false }).order("use_count", { ascending: false });
+      .from(TABLE).select("*")
+      .order("is_featured", { ascending: false })
+      .order("use_count", { ascending: false });
     if (error) throw error;
     return (data ?? []) as Template[];
   },
 
   async getById(id: string): Promise<Template | null> {
-    const { data, error } = await supabase.from(TABLE).select("*").eq("id", id).single();
+    const { data, error } = await supabase
+      .from(TABLE).select("*").eq("id", id).single();
     if (error) throw error;
     return data as Template | null;
-  },
-
-  async incrementUseCount(id: string): Promise<void> {
-    await supabase.rpc("increment_template_use_count", { template_id: id }).catch(() => {});
   },
 };
