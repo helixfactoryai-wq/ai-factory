@@ -18,12 +18,18 @@ export function TopBar() {
 
   const isDetail  = !!pathname.match(/^\/projects\/[^/]+$/);
   const isPrompts = !!pathname.match(/^\/projects\/[^/]+\/prompts$/);
+  const isAudits  = !!pathname.match(/^\/projects\/[^/]+\/audits$/);
 
   const key   = Object.keys(TITLES).filter((k) => k !== "/").find((k) => pathname.startsWith(k)) ?? "/";
-  const title = isPrompts ? "Prompt Builder" : isDetail ? "Project" : (TITLES[key] ?? "AI Factory");
+  const title = isPrompts ? "Prompt Builder" : isAudits ? "Audits" : isDetail ? "Project" : (TITLES[key] ?? "AI Factory");
 
-  const showBack = isDetail || isPrompts;
-  const backPath = isPrompts ? pathname.replace("/prompts", "") : "/projects";
+  const showBack = isDetail || isPrompts || isAudits;
+  const backPath = isPrompts
+    ? pathname.replace("/prompts", "")
+    : isAudits
+    ? pathname.replace("/audits", "")
+    : "/projects";
+
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? "A";
 
   return (
