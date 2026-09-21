@@ -38,7 +38,7 @@ export function LoginPage() {
     try {
       await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: "https://project-1pcv1.vercel.app" },
       });
     } catch {
       setError("Google sign-in failed.");
