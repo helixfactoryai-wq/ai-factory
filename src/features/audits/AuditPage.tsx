@@ -16,6 +16,7 @@ import { CardSkeleton, Spinner } from "@/components/ui/Loading";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { useToast } from "@/components/ui/Toast";
 import { auditsService, type Audit, type AuditStatus } from "@/services/audits.service";
+import { supabase } from "@/lib/supabase";
 
 const STATUS_CONFIG: Record<AuditStatus, { icon: React.ElementType; color: string; bg: string; label: string }> = {
   pending: { icon: Clock,        color: "text-slate-400",   bg: "bg-slate-500/10 border-slate-500/30",     label: "Pending" },
@@ -36,10 +37,10 @@ function ScoreBar({ score }: { score: number }) {
   const textColor = score >= 80 ? "text-emerald-400" : score >= 60 ? "text-amber-400" : "text-red-400";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-[#1E2939] rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-[#1E2939] rounded-full overflow-hidden">
         <div className={"h-full rounded-full transition-all duration-700 " + color} style={{ width: score + "%" }} />
       </div>
-      <span className={"text-xs font-mono font-bold " + textColor}>{score}%</span>
+      <span className={"text-sm font-mono font-bold w-10 text-right " + textColor}>{score}%</span>
     </div>
   );
 }
@@ -56,46 +57,38 @@ function AuditCard({ audit, onDelete, projectId }: {
 
   const runAudit = async () => {
     setRunning(true);
-    const start = Date.now();
     try {
       await auditsService.updateResult(audit.id, {
         status: "running", actual_output: "", score: 0, latency_ms: 0, tokens_used: 0,
       });
       qc.invalidateQueries({ queryKey: ["audits", "project", projectId] });
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-haiku-20240307",
-          max_tokens: 1024,
-          messages: [{ role: "user", content: audit.test_input }],
-        }),
+      const { data, error } = await supabase.functions.invoke("run-audit", {
+        body: {
+          test_input: audit.test_input,
+          expected_output: audit.expected_output ?? "",
+          model: audit.model,
+        },
       });
 
-      const latency = Date.now() - start;
-      if (!res.ok) throw new Error("API call failed");
-      const data = await res.json();
-      const output = data.content?.[0]?.text ?? "";
-      const tokens = (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0);
-
-      let score = 70;
-      if (audit.expected_output) {
-        const words = audit.expected_output.toLowerCase().split(" ").filter(Boolean);
-        const matches = words.filter((w) => output.toLowerCase().includes(w)).length;
-        score = Math.round((matches / Math.max(words.length, 1)) * 100);
-      }
+      if (error) throw new Error(error.message);
+      if (data.error) throw new Error(data.error);
 
       await auditsService.updateResult(audit.id, {
-        status: score >= 60 ? "passed" : "failed",
-        actual_output: output, score, latency_ms: latency, tokens_used: tokens,
+        status: data.score >= 60 ? "passed" : "failed",
+        actual_output: data.output,
+        score: data.score,
+        latency_ms: data.latency_ms,
+        tokens_used: data.tokens_used,
       });
-      toast("success", score >= 60 ? "Audit passed!" : "Audit failed", "Score: " + score + "%");
-    } catch {
+
+      toast("success", data.score >= 60 ? "✅ Audit passed!" : "❌ Audit failed", "Score: " + data.score + "%");
+    } catch (err) {
       await auditsService.updateResult(audit.id, {
-        status: "error", actual_output: "Failed to run audit", score: 0, latency_ms: 0, tokens_used: 0,
+        status: "error", actual_output: err instanceof Error ? err.message : "Unknown error",
+        score: 0, latency_ms: 0, tokens_used: 0,
       });
-      toast("error", "Audit error", "Could not connect to AI API");
+      toast("error", "Audit error", err instanceof Error ? err.message : "Unknown error");
     } finally {
       setRunning(false);
       qc.invalidateQueries({ queryKey: ["audits", "project", projectId] });
@@ -106,13 +99,12 @@ function AuditCard({ audit, onDelete, projectId }: {
     <div className="card p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className={"badge border text-xs " + cfg.bg}>
               <Icon className={"w-3 h-3 mr-1 " + cfg.color} />{cfg.label}
             </span>
-            {audit.latency_ms ? (
-              <span className="text-[10px] text-slate-500 font-mono">{audit.latency_ms}ms</span>
-            ) : null}
+            {audit.latency_ms ? <span className="text-[10px] text-slate-500 font-mono">{audit.latency_ms}ms</span> : null}
+            {audit.tokens_used ? <span className="text-[10px] text-slate-500 font-mono">{audit.tokens_used} tokens</span> : null}
           </div>
           <h3 className="text-sm font-semibold text-slate-100">{audit.name}</h3>
           <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
@@ -121,7 +113,7 @@ function AuditCard({ audit, onDelete, projectId }: {
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button onClick={runAudit} disabled={running || audit.status === "running"}
-            className="btn-primary px-2.5 py-1.5 min-h-0 h-8 text-xs">
+            className="btn-primary px-3 py-1.5 min-h-0 h-8 text-xs gap-1.5">
             {running ? <Spinner size="sm" /> : <><Play className="w-3 h-3" />Run</>}
           </button>
           <button onClick={onDelete}
@@ -142,30 +134,29 @@ function AuditCard({ audit, onDelete, projectId }: {
       {expanded && (
         <div className="space-y-3 pt-2 border-t border-slate-700/40">
           <div>
-            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Test input</p>
-            <pre className="text-xs text-slate-300 font-mono bg-[#0F172A] rounded-lg p-3 whitespace-pre-wrap break-words border border-slate-700/60 max-h-32 overflow-y-auto">
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Test Input</p>
+            <pre className="text-xs text-slate-300 font-mono bg-[#0F172A] rounded-lg p-3 whitespace-pre-wrap break-words border border-slate-700/60 max-h-40 overflow-y-auto">
               {audit.test_input}
             </pre>
           </div>
           {audit.expected_output && (
             <div>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Expected output</p>
-              <pre className="text-xs text-slate-400 font-mono bg-[#0F172A] rounded-lg p-3 whitespace-pre-wrap break-words border border-slate-700/60 max-h-32 overflow-y-auto">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Expected Output</p>
+              <pre className="text-xs text-slate-400 font-mono bg-[#0F172A] rounded-lg p-3 whitespace-pre-wrap break-words border border-slate-700/60 max-h-40 overflow-y-auto">
                 {audit.expected_output}
               </pre>
             </div>
           )}
           {audit.actual_output && (
             <div>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Actual output</p>
-              <pre className="text-xs text-slate-300 font-mono bg-[#0F172A] rounded-lg p-3 whitespace-pre-wrap break-words border border-slate-700/60 max-h-32 overflow-y-auto">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Actual Output</p>
+              <pre className={"text-xs font-mono bg-[#0F172A] rounded-lg p-3 whitespace-pre-wrap break-words border max-h-40 overflow-y-auto " +
+                (audit.status === "passed" ? "text-emerald-300 border-emerald-700/40" :
+                 audit.status === "failed" ? "text-red-300 border-red-700/40" : "text-slate-300 border-slate-700/60")}>
                 {audit.actual_output}
               </pre>
             </div>
           )}
-          {audit.tokens_used ? (
-            <p className="text-xs text-slate-500 font-mono">Tokens used: {audit.tokens_used}</p>
-          ) : null}
         </div>
       )}
     </div>
@@ -182,7 +173,7 @@ function CreateAuditForm({ projectId, onSubmit, onCancel, isLoading }: {
   const [name, setName] = useState("");
   const [testInput, setTestInput] = useState("");
   const [expectedOutput, setExpectedOutput] = useState("");
-  const [model, setModel] = useState("claude-sonnet");
+  const [model, setModel] = useState("deepseek-chat");
   const [promptId, setPromptId] = useState("");
   const [error, setError] = useState("");
 
@@ -206,34 +197,44 @@ function CreateAuditForm({ projectId, onSubmit, onCancel, isLoading }: {
         <input type="text" value={name} onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Test greeting response" className="input" autoFocus />
       </div>
+
       <div>
-        <label className="label">Load from prompt (optional)</label>
+        <label className="label">Load from prompt <span className="text-slate-500 font-normal">(optional)</span></label>
         <select value={promptId} onChange={(e) => handlePromptSelect(e.target.value)} className="input">
-          <option value="">Select a prompt...</option>
+          <option value="">Select a prompt to pre-fill...</option>
           {(prompts ?? []).map((p) => (
             <option key={p.id} value={p.id}>{p.name} (v{p.version})</option>
           ))}
         </select>
       </div>
+
       <div>
         <label className="label">Test input <span className="text-red-400">*</span></label>
         <textarea value={testInput} onChange={(e) => setTestInput(e.target.value)}
-          placeholder="The message or prompt to test..."
-          rows={4} className="input resize-none font-mono text-xs" style={{ minHeight: "100px" }} />
+          placeholder="The message or prompt to send to the AI..."
+          rows={5} className="input resize-none font-mono text-xs" style={{ minHeight: "120px" }} />
       </div>
+
       <div>
-        <label className="label">Expected output <span className="text-slate-500 font-normal">(optional)</span></label>
+        <label className="label">
+          Expected output <span className="text-slate-500 font-normal">(optional — used for scoring)</span>
+        </label>
         <textarea value={expectedOutput} onChange={(e) => setExpectedOutput(e.target.value)}
-          placeholder="What the ideal response should contain..."
+          placeholder="Keywords or phrases the response should contain..."
           rows={3} className="input resize-none text-sm" style={{ minHeight: "80px" }} />
+        <p className="text-xs text-slate-600 mt-1">Score is calculated by how many keywords appear in the response.</p>
       </div>
+
       <div>
         <label className="label">Model</label>
         <select value={model} onChange={(e) => setModel(e.target.value)} className="input">
           {MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
+        <p className="text-xs text-slate-600 mt-1">DeepSeek and Gemini Flash are free on OpenRouter.</p>
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {error && <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20">{error}</p>}
+
       <div className="flex gap-3 pt-2 border-t border-slate-700/60">
         <button onClick={onCancel} className="btn-secondary flex-1 justify-center" disabled={isLoading}>Cancel</button>
         <button onClick={submit} className="btn-primary flex-1 justify-center" disabled={isLoading}>
@@ -248,6 +249,7 @@ export function AuditPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const qc = useQueryClient();
   const { data: project } = useProject(projectId ?? "");
   const { data: audits, isLoading, error, refetch } = useAudits(projectId ?? "");
   const createAudit = useCreateAudit();
@@ -289,13 +291,40 @@ export function AuditPage() {
     } catch { toast("error", "Failed to delete audit"); }
   };
 
+  const runAll = async () => {
+    if (!audits || !projectId) return;
+    toast("success", "Running all audits...", "This may take a moment");
+    for (const audit of audits) {
+      try {
+        await auditsService.updateResult(audit.id, {
+          status: "running", actual_output: "", score: 0, latency_ms: 0, tokens_used: 0,
+        });
+        const { data, error } = await supabase.functions.invoke("run-audit", {
+          body: { test_input: audit.test_input, expected_output: audit.expected_output ?? "", model: audit.model },
+        });
+        if (error || data.error) throw new Error(error?.message ?? data.error);
+        await auditsService.updateResult(audit.id, {
+          status: data.score >= 60 ? "passed" : "failed",
+          actual_output: data.output, score: data.score,
+          latency_ms: data.latency_ms, tokens_used: data.tokens_used,
+        });
+      } catch {
+        await auditsService.updateResult(audit.id, {
+          status: "error", actual_output: "Failed", score: 0, latency_ms: 0, tokens_used: 0,
+        });
+      }
+    }
+    qc.invalidateQueries({ queryKey: ["audits", "project", projectId] });
+    toast("success", "All audits complete!");
+  };
+
   return (
     <div className="space-y-5 animate-in">
       <div className="flex items-center justify-between">
         <button onClick={() => navigate("/projects/" + projectId)}
           className="flex items-center gap-2 text-slate-400 hover:text-slate-200 transition-colors">
           <ArrowLeft className="w-4 h-4" />
-          <span className="text-sm truncate max-w-[160px]">{project?.name ?? "Project"}</span>
+          <span className="text-sm truncate max-w-[200px]">{project?.name ?? "Project"}</span>
         </button>
         <button onClick={() => setCreateOpen(true)} className="btn-primary px-3 min-h-0 h-9 text-xs">
           <Plus className="w-4 h-4" />New audit
@@ -308,12 +337,14 @@ export function AuditPage() {
         </div>
         <div>
           <h1 className="text-base font-bold text-slate-100">Audits</h1>
-          <p className="text-xs text-slate-500 mt-0.5">{stats.total} test{stats.total !== 1 ? "s" : ""} · {project?.name}</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {stats.total} test{stats.total !== 1 ? "s" : ""} · {project?.name} · Powered by OpenRouter
+          </p>
         </div>
       </div>
 
       {stats.total > 0 && (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-4 gap-3">
           {[
             { label: "Total",     value: String(stats.total),    color: "text-slate-300" },
             { label: "Passed",    value: String(stats.passed),   color: "text-emerald-400" },
@@ -322,7 +353,7 @@ export function AuditPage() {
               color: stats.avgScore !== null && stats.avgScore >= 60 ? "text-emerald-400" : "text-amber-400" },
           ].map((s) => (
             <div key={s.label} className="card p-3 text-center">
-              <p className={"text-lg font-bold " + s.color}>{s.value}</p>
+              <p className={"text-xl font-bold " + s.color}>{s.value}</p>
               <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
             </div>
           ))}
@@ -334,7 +365,7 @@ export function AuditPage() {
 
       {!isLoading && !error && (audits?.length ?? 0) === 0 && (
         <EmptyState icon={ShieldCheck} title="No audits yet"
-          description="Create test cases to evaluate your AI prompts for quality, accuracy, and consistency."
+          description="Create test cases to evaluate your AI prompts. Powered by OpenRouter free models."
           action={<button onClick={() => setCreateOpen(true)} className="btn-primary"><Plus className="w-4 h-4" />Create first audit</button>} />
       )}
 
@@ -350,9 +381,12 @@ export function AuditPage() {
         <div className="card p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-violet-400" />
-            <span className="text-sm text-slate-300">Run all audits</span>
+            <div>
+              <p className="text-sm font-medium text-slate-200">Run all audits</p>
+              <p className="text-xs text-slate-500">Runs {stats.total} tests sequentially</p>
+            </div>
           </div>
-          <button className="btn-primary px-3 min-h-0 h-8 text-xs">
+          <button onClick={runAll} className="btn-primary px-3 min-h-0 h-8 text-xs">
             <Play className="w-3 h-3" />Run all
           </button>
         </div>
