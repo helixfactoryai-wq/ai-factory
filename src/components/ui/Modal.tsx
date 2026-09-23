@@ -19,22 +19,17 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center md:p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Sheet on mobile, centered card on desktop */}
+      {/* Centered modal */}
       <div
-        className="relative w-full md:max-w-lg bg-[#111827] border-t md:border border-slate-700/60 rounded-t-2xl md:rounded-2xl flex flex-col shadow-2xl"
-        style={{ maxHeight: "90vh" }}
+        className="relative w-full max-w-lg bg-[#111827] border border-slate-700/60 rounded-2xl flex flex-col shadow-2xl animate-in"
+        style={{ maxHeight: "85vh" }}
       >
-        {/* Mobile drag handle */}
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 md:hidden">
-          <div className="w-10 h-1 rounded-full bg-slate-600" />
-        </div>
-
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/60 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/60 flex-shrink-0">
           <h2 className="text-base font-semibold text-slate-100">{title}</h2>
           <button
             onClick={onClose}
@@ -45,15 +40,9 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         </div>
 
         {/* Scrollable body */}
-        <div
-          className="overflow-y-auto flex-1"
-          style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}
-        >
-          <div className="px-5 py-5">
-            {children}
-          </div>
-          {/* Safe area bottom padding for mobile */}
-          <div className="h-6 md:hidden" />
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          {children}
+          <div className="h-2" />
         </div>
       </div>
     </div>
