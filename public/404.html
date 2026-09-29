@@ -1,0 +1,10 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      var path = window.location.pathname;
+      var search = window.location.search;
+      window.location.replace('/?redirect=' + encodeURIComponent(path + search));
+    </script>
+  </head>
+</html>
