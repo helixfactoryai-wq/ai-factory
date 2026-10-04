@@ -23,12 +23,9 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
     <div
       onClick={onClose}
       style={{
-        position: "fixed",
-        top: 0, left: 0, right: 0, bottom: 0,
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
         zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        display: "flex", alignItems: "center", justifyContent: "center",
         padding: "24px",
         background: "rgba(0,0,0,0.8)",
         backdropFilter: "blur(4px)",
@@ -37,58 +34,47 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          position: "relative",
-          width: "100%",
-          maxWidth: "560px",
-          maxHeight: "80vh",
-          background: "#111827",
-          border: "1px solid rgba(99,102,241,0.2)",
-          borderRadius: "16px",
-          display: "flex",
-          flexDirection: "column",
+          position: "relative", width: "100%", maxWidth: "580px",
+          maxHeight: "85vh", background: "#111827",
+          border: "1px solid rgba(99,102,241,0.25)",
+          borderRadius: "16px", display: "flex", flexDirection: "column",
           boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
-          overflow: "hidden",
+          animation: "modalIn 0.2s ease-out",
         }}
       >
+        <style>{`
+          @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.96) translateY(8px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
+          }
+        `}</style>
+
         {/* Header */}
         <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "16px 24px",
-          borderBottom: "1px solid rgba(51,65,85,0.6)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "18px 24px", borderBottom: "1px solid rgba(51,65,85,0.6)",
           flexShrink: 0,
         }}>
           <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#f1f5f9", margin: 0 }}>
             {title}
           </h2>
-          <button
-            onClick={onClose}
-            style={{
-              width: 32, height: 32,
-              borderRadius: "50%",
-              background: "rgba(71,85,105,0.5)",
-              border: "none",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#94a3b8",
-              flexShrink: 0,
-            }}
-          >
+          <button onClick={onClose} style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: "rgba(71,85,105,0.5)", border: "none",
+            cursor: "pointer", display: "flex", alignItems: "center",
+            justifyContent: "center", color: "#94a3b8", flexShrink: 0,
+          }}>
             <X size={16} />
           </button>
         </div>
 
         {/* Scrollable body */}
         <div style={{
-          overflowY: "auto",
-          padding: "20px 24px",
-          flex: 1,
+          overflowY: "auto", padding: "20px 24px",
+          flex: 1, overscrollBehavior: "contain",
         }}>
           {children}
-          <div style={{ height: 8 }} />
+          <div style={{ height: "8px" }} />
         </div>
       </div>
     </div>,
