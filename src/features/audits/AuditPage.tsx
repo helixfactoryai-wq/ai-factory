@@ -17,6 +17,7 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { useToast } from "@/components/ui/Toast";
 import { auditsService, type Audit, type AuditStatus } from "@/services/audits.service";
 import { supabase } from "@/lib/supabase";
+import { calculateScore } from "@/lib/scoring";
 
 const STATUS_CONFIG: Record<AuditStatus, { icon: React.ElementType; color: string; bg: string; label: string }> = {
   pending: { icon: Clock,        color: "text-slate-400",   bg: "bg-slate-500/10 border-slate-500/30",     label: "Pending" },
@@ -74,18 +75,30 @@ function AuditCard({ audit, onDelete, projectId }: {
       if (error) throw new Error(error.message);
       if (data.error) throw new Error(data.error);
 
+      // Advanced local scoring
+      const { score, breakdown } = calculateScore(data.output, audit.expected_output ?? "");
+      const finalScore = Math.round((data.score + score) / 2);
+
+      const scoreInfo = "keyword=" + breakdown.keyword + "% sentiment=" + breakdown.sentiment + "% coherence=" + breakdown.coherence + "%";
+
       await auditsService.updateResult(audit.id, {
-        status: data.score >= 60 ? "passed" : "failed",
+        status: finalScore >= 60 ? "passed" : "failed",
         actual_output: data.output,
-        score: data.score,
+        score: finalScore,
         latency_ms: data.latency_ms,
         tokens_used: data.tokens_used,
+
       });
 
-      toast("success", data.score >= 60 ? "✅ Audit passed!" : "❌ Audit failed", "Score: " + data.score + "%");
+      toast(
+        finalScore >= 60 ? "success" : "warning",
+        finalScore >= 60 ? "✅ Audit passed!" : "❌ Audit failed",
+        "Score: " + finalScore + "% | " + scoreInfo
+      );
     } catch (err) {
       await auditsService.updateResult(audit.id, {
-        status: "error", actual_output: err instanceof Error ? err.message : "Unknown error",
+        status: "error",
+        actual_output: err instanceof Error ? err.message : "Unknown error",
         score: 0, latency_ms: 0, tokens_used: 0,
       });
       toast("error", "Audit error", err instanceof Error ? err.message : "Unknown error");
@@ -124,6 +137,10 @@ function AuditCard({ audit, onDelete, projectId }: {
       </div>
 
       {audit.score !== null && <ScoreBar score={audit.score} />}
+
+      {audit.notes && (
+        <p className="text-[10px] text-slate-500 font-mono bg-[#0F172A] px-2 py-1 rounded">{audit.notes}</p>
+      )}
 
       <button onClick={() => setExpanded((v) => !v)}
         className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors w-fit">
@@ -197,34 +214,28 @@ function CreateAuditForm({ projectId, onSubmit, onCancel, isLoading }: {
         <input type="text" value={name} onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Test greeting response" className="input" autoFocus />
       </div>
-
       <div>
         <label className="label">Load from prompt <span className="text-slate-500 font-normal">(optional)</span></label>
         <select value={promptId} onChange={(e) => handlePromptSelect(e.target.value)} className="input">
-          <option value="">Select a prompt to pre-fill...</option>
+          <option value="">Select a prompt...</option>
           {(prompts ?? []).map((p) => (
             <option key={p.id} value={p.id}>{p.name} (v{p.version})</option>
           ))}
         </select>
       </div>
-
       <div>
         <label className="label">Test input <span className="text-red-400">*</span></label>
         <textarea value={testInput} onChange={(e) => setTestInput(e.target.value)}
-          placeholder="The message or prompt to send to the AI..."
+          placeholder="The message or prompt to test..."
           rows={5} className="input resize-none font-mono text-xs" style={{ minHeight: "120px" }} />
       </div>
-
       <div>
-        <label className="label">
-          Expected output <span className="text-slate-500 font-normal">(optional — used for scoring)</span>
-        </label>
+        <label className="label">Expected output <span className="text-slate-500 font-normal">(optional — used for scoring)</span></label>
         <textarea value={expectedOutput} onChange={(e) => setExpectedOutput(e.target.value)}
           placeholder="Keywords or phrases the response should contain..."
           rows={3} className="input resize-none text-sm" style={{ minHeight: "80px" }} />
-        <p className="text-xs text-slate-600 mt-1">Score is calculated by how many keywords appear in the response.</p>
+        <p className="text-xs text-slate-600 mt-1">Scoring: keyword match + sentiment + coherence + length</p>
       </div>
-
       <div>
         <label className="label">Model</label>
         <select value={model} onChange={(e) => setModel(e.target.value)} className="input">
@@ -232,9 +243,7 @@ function CreateAuditForm({ projectId, onSubmit, onCancel, isLoading }: {
         </select>
         <p className="text-xs text-slate-600 mt-1">DeepSeek and Gemini Flash are free on OpenRouter.</p>
       </div>
-
       {error && <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20">{error}</p>}
-
       <div className="flex gap-3 pt-2 border-t border-slate-700/60">
         <button onClick={onCancel} className="btn-secondary flex-1 justify-center" disabled={isLoading}>Cancel</button>
         <button onClick={submit} className="btn-primary flex-1 justify-center" disabled={isLoading}>
@@ -293,7 +302,7 @@ export function AuditPage() {
 
   const runAll = async () => {
     if (!audits || !projectId) return;
-    toast("success", "Running all audits...", "This may take a moment");
+    toast("success", "Running all audits...");
     for (const audit of audits) {
       try {
         await auditsService.updateResult(audit.id, {
@@ -303,9 +312,11 @@ export function AuditPage() {
           body: { test_input: audit.test_input, expected_output: audit.expected_output ?? "", model: audit.model },
         });
         if (error || data.error) throw new Error(error?.message ?? data.error);
+        const { score } = calculateScore(data.output, audit.expected_output ?? "");
+        const finalScore = Math.round((data.score + score) / 2);
         await auditsService.updateResult(audit.id, {
-          status: data.score >= 60 ? "passed" : "failed",
-          actual_output: data.output, score: data.score,
+          status: finalScore >= 60 ? "passed" : "failed",
+          actual_output: data.output, score: finalScore,
           latency_ms: data.latency_ms, tokens_used: data.tokens_used,
         });
       } catch {
@@ -365,7 +376,7 @@ export function AuditPage() {
 
       {!isLoading && !error && (audits?.length ?? 0) === 0 && (
         <EmptyState icon={ShieldCheck} title="No audits yet"
-          description="Create test cases to evaluate your AI prompts. Powered by OpenRouter free models."
+          description="Create test cases to evaluate your AI prompts with keyword, sentiment, coherence and length scoring."
           action={<button onClick={() => setCreateOpen(true)} className="btn-primary"><Plus className="w-4 h-4" />Create first audit</button>} />
       )}
 
