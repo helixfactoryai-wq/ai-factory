@@ -1,4 +1,4 @@
-﻿import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 export interface ProjectAnalytics {
   project_id: string;
@@ -32,41 +32,27 @@ export const analyticsService = {
       .select("*")
       .order("audit_count", { ascending: false });
     if (error) throw error;
-    return (data ?? []) as ProjectAnalytics[];
+    return (data ?? []) as unknown as ProjectAnalytics[];
   },
 
   async getOverallStats(): Promise<OverallStats> {
-    const { data, error } = await supabase
-      .from("project_analytics")
-      .select("*");
+    const { data, error } = await supabase.from("project_analytics").select("*");
     if (error) throw error;
-    const rows = (data ?? []) as ProjectAnalytics[];
+    const rows = (data ?? []) as unknown as ProjectAnalytics[];
     const total_projects = rows.length;
     const total_prompts = rows.reduce((s, r) => s + r.prompt_count, 0);
     const total_audits = rows.reduce((s, r) => s + r.audit_count, 0);
-    const total_tokens = rows.reduce((s, r) => s + r.total_tokens_used, 0);
+    const total_tokens = rows.reduce((s, r) => s + Number(r.total_tokens_used), 0);
     const scored = rows.filter((r) => r.audit_count > 0);
     const avg_score = scored.length
-      ? Math.round(scored.reduce((s, r) => s + r.avg_audit_score, 0) / scored.length)
+      ? Math.round(scored.reduce((s, r) => s + Number(r.avg_audit_score), 0) / scored.length)
       : 0;
     const total_passed = rows.reduce((s, r) => s + r.passed_audits, 0);
-    const pass_rate = total_audits > 0
-      ? Math.round((total_passed / total_audits) * 100)
-      : 0;
+    const pass_rate = total_audits > 0 ? Math.round((total_passed / total_audits) * 100) : 0;
     return { total_projects, total_prompts, total_audits, avg_score, total_tokens, pass_rate };
   },
 
-  async getRecentActivity() {
-    const { data, error } = await supabase
-      .from("activity_log")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(10);
-    if (error) return [];
-    return data ?? [];
-  },
-
-  async getAuditTrends() {
+  async getAuditTrends(): Promise<{ created_at: string; score: number; status: string; latency_ms: number | null }[]> {
     const { data, error } = await supabase
       .from("audits")
       .select("created_at, score, status, latency_ms")
@@ -74,6 +60,6 @@ export const analyticsService = {
       .order("created_at", { ascending: true })
       .limit(50);
     if (error) return [];
-    return data ?? [];
+    return (data ?? []) as unknown as { created_at: string; score: number; status: string; latency_ms: number | null }[];
   },
 };

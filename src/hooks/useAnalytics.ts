@@ -1,4 +1,4 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { analyticsService } from "@/services/analytics.service";
 
 export function useProjectAnalytics() {

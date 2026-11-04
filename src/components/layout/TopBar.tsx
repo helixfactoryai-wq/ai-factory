@@ -1,14 +1,10 @@
-﻿import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Zap, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 const TITLES: Record<string, string> = {
-  "/":          "Dashboard",
-  "/projects":  "Projects",
-  "/templates": "Templates",
-  "/settings":  "Settings",
-  "/audits":    "Audits",
-  "/deploy":    "Deploy",
+  "/": "Dashboard", "/projects": "Projects", "/analytics": "Analytics",
+  "/templates": "Templates", "/settings": "Settings", "/deploy": "Deploy",
 };
 
 export function TopBar() {
@@ -24,12 +20,7 @@ export function TopBar() {
   const title = isPrompts ? "Prompt Builder" : isAudits ? "Audits" : isDetail ? "Project" : (TITLES[key] ?? "AI Factory");
 
   const showBack = isDetail || isPrompts || isAudits;
-  const backPath = isPrompts
-    ? pathname.replace("/prompts", "")
-    : isAudits
-    ? pathname.replace("/audits", "")
-    : "/projects";
-
+  const backPath = isPrompts ? pathname.replace("/prompts", "") : isAudits ? pathname.replace("/audits", "") : "/projects";
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? "A";
 
   return (

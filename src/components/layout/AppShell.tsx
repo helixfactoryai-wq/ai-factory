@@ -1,4 +1,4 @@
-﻿import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
 import { LayoutDashboard, FolderKanban, LayoutTemplate, Settings, Zap, BarChart3 } from "lucide-react";

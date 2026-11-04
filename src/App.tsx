@@ -1,4 +1,4 @@
-﻿import { HashRouter as BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -10,6 +10,7 @@ import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { PromptBuilderPage } from "@/features/prompt-builder/PromptBuilderPage";
 import { TemplatesPage } from "@/features/templates/TemplatesPage";
 import { AuditPage } from "@/features/audits/AuditPage";
+import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 
@@ -17,7 +18,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <BrowserRouter>
+        <HashRouter>
           <Routes>
             <Route element={<AuthGuard><AppShell /></AuthGuard>}>
               <Route index element={<DashboardPage />} />
@@ -25,15 +26,16 @@ export function App() {
               <Route path="projects/:id" element={<ProjectDetailPage />} />
               <Route path="projects/:id/prompts" element={<PromptBuilderPage />} />
               <Route path="projects/:id/audits" element={<AuditPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="templates" element={<TemplatesPage />} />
               <Route path="prompt-builder" element={<Navigate to="/templates" replace />} />
               <Route path="audits" element={<Navigate to="/projects" replace />} />
-              <Route path="deploy" element={<PlaceholderPage title="Deploy" description="One-click deploy to Vercel, Railway, Cloud Run, or Docker." phase="Phase 3" />} />
+              <Route path="deploy" element={<PlaceholderPage title="Deploy" description="One-click deploy to Vercel, Railway, Cloud Run, or Docker." phase="Phase 5" />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
-        </BrowserRouter>
+        </HashRouter>
       </ToastProvider>
     </QueryClientProvider>
   );

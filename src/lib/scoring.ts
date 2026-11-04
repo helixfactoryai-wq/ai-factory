@@ -1,4 +1,3 @@
-﻿// Advanced scoring algorithms for audit results
 export function calculateScore(actual: string, expected: string): {
   score: number;
   breakdown: { keyword: number; sentiment: number; coherence: number; length: number };
